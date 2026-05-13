@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <cstddef>
+#include <iostream>
 #include <memory>
 #include <stack>
 #include <stddef.h>
@@ -15,9 +16,13 @@ class Arena {
 
 		~Arena() {
 			free(basePtr);
+			std::cout << "Arena Freed\n";
 		};
 
 		void* alloc(size_t size, size_t alignment) {
+			if (size > space) {
+				return nullptr;
+			}
 			void* ptr = offsetPtr;
 
 			if (std::align(alignment, size, ptr, space)) {
@@ -26,19 +31,24 @@ class Arena {
 
 				return ptr;
 			}
-			
-			// Invalid, Fix later
-			return ptr;
+
+			return nullptr;
 		};
 
 		void reset() {
 			offsetPtr = basePtr;
+			space = (char*) blockEnd - (char*) basePtr;
+
 		};
 
 		template<typename T, typename... Args>
 		T* construct(Args&&... args) {
 			void* mem = this->alloc(sizeof(T), alignof(T));
-			return new (mem) T(std::forward<args>(args)...);
+			return new (mem) T(std::forward<Args>(args)...);
+		}
+
+		size_t spaceLeft() {
+			return space;
 		}
 
 	private:
