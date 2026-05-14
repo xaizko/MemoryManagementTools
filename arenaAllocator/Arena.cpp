@@ -1,45 +1,54 @@
-#include <cstdlib>
-#include <cstddef>
 #include <iostream>
 #include <memory>
-#include <stack>
-#include <stddef.h>
 
 class Arena {
 	public:
-		explicit Arena(size_t blockSize) {
-			basePtr = malloc(blockSize);
-			blockEnd = (char*)basePtr + blockSize;
-			offsetPtr = basePtr;
-			space = blockSize;
-		};
+		explicit Arena(size_t blockSize) : m_defaultBlockSize(blockSize) {
+			m_firstBlock = allocateNewBlock(m_defaultBlockSize);
+		}
 
 		~Arena() {
-			free(basePtr);
+			Block* current = m_currentBlock;
+			while (current) {
+				Block* next = current->next;
+				free(current->ptr);
+				free(current);
+				current = next;
+			}
+
 			std::cout << "Arena Freed\n";
-		};
+		}
 
 		void* alloc(size_t size, size_t alignment) {
-			if (size > space) {
-				return nullptr;
+			size_t spaceInCurrentBlock = m_blockEnd - m_offsetPtr;
+			void* ptr = m_offsetPtr;
+
+			// Align and fit in current block
+			// If fail then allocate new block
+			if (std::align(alignment, size, ptr, spaceInCurrentBlock)) {
+				m_offsetPtr = static_cast<char*>(ptr) + size;
+				return ptr;
 			}
-			void* ptr = offsetPtr;
 
-			if (std::align(alignment, size, ptr, space)) {
-				offsetPtr = static_cast<char*>(ptr) + size;
-				space -= size;
+			size_t nextBlockSize = std::max(size + alignment, m_defaultBlockSize);
+			allocateNewBlock(nextBlockSize);
 
+			ptr = m_offsetPtr;
+			spaceInCurrentBlock = m_blockEnd - m_offsetPtr;
+
+			if (std::align(alignment, size, ptr, spaceInCurrentBlock)) {
+				m_offsetPtr = static_cast<char*>(ptr) + size;
 				return ptr;
 			}
 
 			return nullptr;
-		};
+		}
 
 		void reset() {
-			offsetPtr = basePtr;
-			space = (char*) blockEnd - (char*) basePtr;
-
-		};
+			m_currentBlock = m_firstBlock;
+			m_offsetPtr = static_cast<char*>(m_currentBlock->ptr);
+			m_blockEnd = m_offsetPtr + m_currentBlock->size;
+		}
 
 		template<typename T, typename... Args>
 		T* construct(Args&&... args) {
@@ -47,14 +56,41 @@ class Arena {
 			return new (mem) T(std::forward<Args>(args)...);
 		}
 
-		size_t spaceLeft() {
-			return space;
+		size_t getRemainingSize() {
+			return m_blockEnd - m_offsetPtr; 
 		}
 
 	private:
-		std::stack<void*> ptrs;
-		void* basePtr;
-		void* blockEnd; 
-		void* offsetPtr;
-		size_t space; 
+		struct Block {
+			void* ptr;
+			size_t size;
+			Block* next;
+		};
+
+		Block* m_firstBlock = nullptr;
+		Block* m_currentBlock = nullptr;
+		char* m_offsetPtr = nullptr;
+		char* m_blockEnd = nullptr;
+
+		size_t m_defaultBlockSize;
+
+		Block* allocateNewBlock(size_t size) {
+			void* rawMem = malloc(size);
+			if (!rawMem) throw std::bad_alloc();
+
+			// Create new block
+			Block* newBlock = (Block*)malloc(sizeof(Block));
+			newBlock->ptr = rawMem;
+			newBlock->size = size;
+
+			// New block becomes head of chain
+			newBlock->next = m_currentBlock;
+			m_currentBlock = newBlock;
+
+			// Updating arena
+			m_offsetPtr = static_cast<char*>(rawMem);
+			m_blockEnd = m_offsetPtr + size;
+
+			return newBlock;
+		}
 };

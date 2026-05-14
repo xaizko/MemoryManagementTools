@@ -1,6 +1,7 @@
 #include "Arena.cpp"
 #include <cassert>
 #include <iostream>
+#include <limits>
 
 struct Point2D {
 	double x, y;
@@ -16,7 +17,15 @@ struct Point3D {
 };
 
 int main() {
-	Arena arena(100);	
+	int spaceNeeded = 0;
+	std::cout << "Enter amount of space needed in arena: ";
+	while(!(std::cin >> spaceNeeded)) {
+		std::cout << "Invalid input. Enter a number: ";
+		std::cin.clear();
+		std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+	}
+	
+	Arena arena(spaceNeeded);	
 
 	std::cout << "--- Test 1: Basic Allocation ---\n";
 	Point2D* p1 = arena.construct<Point2D>(6.7, 6.7);
@@ -27,13 +36,23 @@ int main() {
 	std::cout << "P2 Address: " << p2 << "\n";
 	std::cout << "P3 Address: " << p3 << "\n";
 
-	std::cout << "Remaining Space: " << arena.spaceLeft() << "\n";
+	std::cout << "--- Test 2: Test Resizing ---\n";
+	size_t initialSpace = arena.getRemainingSize();
+	std::cout << "Space before forcing resize: " << initialSpace << " bytes\n";
 
-	std::cout << "--- Test 2: Reset Arena ---\n";
+	Point3D* p4 = arena.construct<Point3D>(Point2D(1.1, 2.2), 3.3);
+
+	size_t newSpace = arena.getRemainingSize();
+	std::cout << "P4 Address (New Block): " << p4 << "\n";
+	std::cout << "Space in the NEW block: " << newSpace << " bytes\n";
+
+	assert(p1->x == 6.7);
+	assert(p4->z == 3.3);
+	std::cout << "Resize successful: Old and new objects are both valid.\n";
+
+	std::cout << "--- Test 3: Reset Arena ---\n";
 	arena.reset();
-	std::cout << "Remaining Space: " << arena.spaceLeft() << "\n";
+	assert(arena.getRemainingSize() == spaceNeeded);
 
-	// Stall for input before freeing
-	std::cin.get();
 	std::cout << "\nAll tests passed!\n";
 }
